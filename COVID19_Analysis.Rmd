@@ -1,0 +1,125 @@
+---
+title: "COVID19 Analysis"
+author: "Ariel Clifford"
+date: "12/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+```{r importData, echo=FALSE}
+urls = c("https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv", 
+         "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv",
+         "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv", 
+         "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
+
+
+Global_Confirmed = read_csv(urls[2])
+Global_Deaths = read_csv(urls[4])
+```
+
+```{r tidyGlobalData, echo=FALSE}
+Global_Confirmed <- tibble(Global_Confirmed) %>%
+  pivot_longer(cols = matches("2.$"),
+               names_to = "Date",
+               values_to = "Cases") %>%
+  select(`Province/State`, `Country/Region`, Date, Cases)
+
+Global_Deaths <- Global_Deaths %>%
+  pivot_longer(cols = matches("2.$"),
+               names_to = "Date",
+               values_to = "Deaths") %>%
+  select(`Province/State`, `Country/Region`, Date, Deaths)
+
+global <- Global_Confirmed %>%
+  full_join(Global_Deaths) %>%
+  rename(Country_Region = `Country/Region`,
+         Province_State = `Province/State`) %>%
+  mutate(Date = mdy(Date)) %>%
+  unite("Combined_Key",
+        c(Province_State, Country_Region),
+        sep = ", ",
+        na.rm = TRUE,
+        remove = FALSE)
+
+all_Global <- global %>% filter(Cases > 0)
+
+uid_lookup_url = "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
+uid = read_csv(uid_lookup_url)
+all_Global <- all_Global %>%
+  left_join(uid, by = c("Province_State", "Country_Region", "Combined_Key")) %>%
+  select(-c(UID, FIPS)) %>%
+  select(Province_State, Country_Region, Date, Cases, Deaths, Population, Combined_Key)
+```
+
+```{r tidyUSData, echo=FALSE}
+US_Confirmed = read_csv(urls[1])
+US_Deaths = read_csv(urls[3])
+
+US_Confirmed <- US_Confirmed %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "Date",
+               values_to = "Cases") %>%
+  select(Admin2:Cases) %>%
+  mutate(Date = mdy(Date)) %>%
+  select(-c(Lat, Long_))
+
+US_Deaths <- US_Deaths %>%
+    pivot_longer(cols = -(UID:Population),
+               names_to = "Date",
+               values_to = "Deaths") %>%
+  select(Admin2:Deaths) %>%
+  mutate(Date = mdy(Date)) %>%
+  select(-c(Lat, Long_))
+
+US_total <- US_Confirmed %>%
+  full_join(US_Deaths) %>%
+  filter(Cases > 0) %>%
+  filter(Population > 0)
+election <- read_csv("https://github.com/MEDSL/2018-elections-official/raw/master/state_overall_2018.csv")
+
+redVBlue <- election %>%
+  select(state, office, party, candidate, totalvotes, candidatevotes) %>%
+  mutate(percentvote = candidatevotes/totalvotes) %>%
+  mutate(win = if_else(percentvote >= .5, "win", "lose")) %>%
+  filter(win == "win") %>%
+  select(state, candidate, office, party, win)%>%
+  group_by(state, party) %>%
+  tally() %>%
+  group_by(state)%>%
+  drop_na() %>%
+  mutate(total = sum(n))%>%
+  mutate(maj = n/total) %>%
+  group_by(state)%>%
+  filter(maj == max(cur_data()$maj))%>%
+  select(state, party) %>%
+  rename(Province_State = state)
+
+US_with_politics <- left_join(US_total, redVBlue, by="Province_State")
+
+US_with_politics <- US_with_politics %>%
+  group_by(Date, Country_Region, Province_State, party) %>%
+  summarise(Cases = sum(Cases), Deaths = sum(Deaths), Population = Population) %>%
+  mutate(Deaths_Per_Mill = Deaths *1000000 / Population) %>%
+  select(Province_State, Country_Region, Date, Cases, Deaths, Deaths_Per_Mill, Population) %>%
+  count(Province_State, Date, Cases, Deaths, Deaths_Per_Mill, wt=Population) %>%
+  arrange(Province_State, Date) %>%
+    ungroup()
+```
+### Analysis on Johns Hopkins' COVID-19 Data
+
+```{r mostLeastUS, echo=FALSE}
+#pull out most populated state, least populated state
+mostLeast <- 
+
+
+```
+
+```{r mySessInfo, echo=FALSE}
+#sessionInfo()
+```
