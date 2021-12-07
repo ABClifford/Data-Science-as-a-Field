@@ -145,7 +145,7 @@ racialCrossSec <- count(byRace) %>%
 #heat graph plot showing density of crimes by race of victim and perpetrator
 ggplot(racialCrossSec, aes(`Perp Race`, `Victim Race`, fill = log2(n))) + 
   geom_tile() + 
-  scale_fill_gradient(low = "grey", high = "chocolate4") +
+  scale_fill_gradient(low = "yellow", high = "purple") +
   theme(axis.text.x = element_text(angle = 35, size = 9, hjust = 1)) +
   annotate("segment", x = 1, xend = 8, y = 1, yend = 8, color = "green", alpha = .6)
 ```
@@ -193,7 +193,7 @@ ggplot(modelPlot, aes(x = `Victim Race`, y = PredictedProb)) +
 
 ```
   
-A binomial distribution was performed on all crimes that had identified perpetrators and victims.  Based on that distribution, the remaining crimes with identified victims and unknown perpetrators were assigned a "Probability Prediction" of that shooting having been committed by a person of the same race as the victim.  The first chart shows these Probability Predictions, based on the race of the potential victim.  It shows that while all communities (withe the exception of the Native American/Native Alaskan community, which did not have enough data for a prediction) have some chance of a shooting crime being perpetrated by the same race.  The horizontal line on the graph indicates the independant probability of a crime being attributed to any of the represented racial communities.  While Asian/Pacific Islander and Black Hispanic communities are close to being independant of perpetrator race, the White and White Hispanic communities are moderately likely to be victimised by members of their own community.  The Black community is the most likely by far to be victim to its own members.  
+A binomial distribution was performed on all crimes that had identified perpetrators and victims.  Based on that distribution, the remaining crimes with identified victims and unknown perpetrators were assigned a "Probability Prediction" of that shooting having been committed by a person of the same race as the victim.  The first chart shows these Probability Predictions, based on the race of the potential victim.  It shows that while all communities (withe the exception of the Native American/Native Alaskan community, which did not have enough data for a prediction) have some chance of a shooting crime being perpetrated by the same race.  The horizontal line on the graph indicates the independant probability of a crime being attributed to any of the represented racial communities.  While victims in the Asian/Pacific Islander and Black Hispanic communities are close to being independant of perpetrator race, the White and White Hispanic communities are moderately likely to be victimised by members of their own community.  The Black community is the most likely by far to be victim to its own members.  
 
 ## Confounds and Bias 
 Because it is not an official reporting category, incidents that do not qualify are internally defined as, "cases in which bullets pass through victims’ clothes without striking the victims ... [or] cases in which victims are injured by broken glass or debris caused by gunfire."^  Presumably this also disincludes incidents where guns were discharged but no one was injured.  This means that this analysis may not accurately reflect all gun violence during the period, simply that with reported injuries.  
@@ -202,3 +202,7 @@ Because it is not an official reporting category, incidents that do not qualify 
     This predictive model does not cover the likelyhood of a member of a racial community being a shooting victim of all racial communities, only their own (i.e. Black on Black shootings are predicted for, but not Asian American on Black shootings).  More avenues of investigation are likely to be uncovered by expanding the purview of the model.  
     Lastly, this analysis only looks at shooting crimes, only in New York City.  These patterns cannot necessarily be generalized onto other crime types, or other population distributions.  
 ^Source:  https://www.nytimes.com/2016/01/04/opinion/nypd-shooting-statistics.html
+
+```{r mySessInfo}
+sessionInfo()
+```
