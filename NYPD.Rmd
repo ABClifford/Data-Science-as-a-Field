@@ -1,0 +1,204 @@
+---
+title: "NYPDShootingData"
+author: "Ariel Clifford"
+date: "11/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[seq_len(n)]
+}
+```
+## NYPD Shooting Data
+This analysis is based on the NYPD Shooting Data set, for the years 2006 - 2020.  This records the victim, perpetrator, and location information for all reported shootings during that time period.  These numbers are self-reported by the NYPD.  According to former NYPD Police Commissioner William Bratton, "shootings are not a Uniform Crime Report reporting category, but a subset of aggravated assaults."^  In this report, we will dive into these numbers to get a sense of the demographics of victims and assailants.
+
+```{r get_nypd_data, include=FALSE}
+#import NYPD Shooting Incident Data from data.gov
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+NYPD_Shooting_raw <- read_csv(url_in)
+
+#Show summary of data as-is
+#summary(NYPD_Shooting_raw)
+```
+
+```{r nypd_tidy1, echo=FALSE}
+# Tidy 1: Remove Extra Columns, Reformat Dates
+NYPD_Shooting <- NYPD_Shooting_raw %>%
+  select(OCCUR_DATE:VIC_RACE) %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+  select(-c(JURISDICTION_CODE))
+#summary(NYPD_Shooting)
+```
+
+```{r nypd_tidy2, echo=FALSE}
+# Tidy 2: Creating Factors
+NYPD_Shooting <- NYPD_Shooting %>%
+  mutate(BORO = factor(BORO)) %>%
+  mutate(PRECINCT = factor(PRECINCT)) %>%
+  mutate(LOCATION_DESC = factor(LOCATION_DESC)) %>%
+  #Age group needs cleaned
+  mutate(PERP_AGE_GROUP = factor(PERP_AGE_GROUP)) %>%
+  #Sex "U" is unknown, N/A was left blank --> consolidate?
+  mutate(PERP_SEX = factor(PERP_SEX)) %>%
+  mutate(`Perp Race` = factor(PERP_RACE)) %>%
+  #This age group does not need cleaned! Yay!
+  mutate(VIC_AGE_GROUP = factor(VIC_AGE_GROUP)) %>%
+  mutate(VIC_SEX = factor(VIC_SEX)) %>%
+  mutate(`Victim Race` = factor(VIC_RACE)) %>%
+  #change Na to "UNKNOWN" for race
+  replace_na(list(`Perp Race` = "UNKNOWN", `Victim Race` = "UNKNOWN"))
+```
+## Analysis
+
+It is a common perception that violent crime is primarily committed within racial communities.  But is this correlation real?  The first thing to look at is the distribution of perpetrators and victims of shooting crimes.  The following is a grouped bar-chart showing the general racial distribution of perpetrators and victims involved in shootings in New York City.
+
+```{r nypd_barGeneral, echo=FALSE}
+#pull race info, display broad statistics
+byRace <- NYPD_Shooting %>%
+  select(`Perp Race`, `Victim Race`) %>%
+  group_by(`Perp Race`, `Victim Race`)
+#create counts of perpetrators by race
+byPerpRace <- group_by(byRace, `Perp Race`) %>%
+  summarise(, Count = n())
+#create counts of victims by race
+byVicRace <- group_by(byRace, `Victim Race`) %>%
+  summarise(, Count = n())
+#combine victim and perpetrator race information
+byRaceTotal <- bind_rows(byPerpRace, byVicRace) %>%
+  pivot_longer(
+    cols = contains("Race"), 
+    names_to = "Participant", 
+    values_to = "Race", 
+    values_drop_na = TRUE) %>%
+  mutate(Race = fct_reorder(Race, Count))
+#calculate percent of incidents w/ "UNKNOWN" for vic or perp (number used in text)
+percentTotal = byRaceTotal %>%
+  filter(Race == "UNKNOWN") %>%
+  summarise(count = sum(Count))/length(NYPD_Shooting$`Perp Race`)
+
+#Grouped bar plot comparing racial distribution for victims and perpetrators
+ggplot(byRaceTotal, aes(fill = Participant, y = log2(Count), x = Race)) +
+  geom_bar(position = "dodge", stat= "identity") +
+  ylab("Distribution") +
+  coord_flip() +
+  ggtitle("Breakdown of Perpetrators and Victims, by race")
+```
+  
+Within each category, victims outnumber perpetrators significantly, with the exception of those of "Unknown" race.  Between perpetrators and victims, this category represents 43.1% of the data set.  The definition of the category itself is more likely used to describe an unknown attacker than an unknown victim, as a shooting with no distinct victim would not be included in this report (only 65 "UNKNOWN" victims are listed over a 14 year period).  By that same logic, all other categories have many more reported victims than perpetrators.
+
+Below is a comparison of the United States Census reported demographics of New York City and the demographics of the Shooting Report.
+Even with the Unknown category removed, there is a significant difference between the population distribution in general and the populations accounted for in this report.
+
+
+```{r censusVnypd, echo=FALSE}
+#hand-code census data (taken from https://www.census.gov/quickfacts/fact/table/newyorkcitynewyork/PST045219, current to 2019)
+data <- tibble(
+  Race = factor(c("WHITE", 
+           "BLACK", 
+           "WHITE HISPANIC", 
+           "BLACK HISPANIC", 
+           "AMERICAN INDIAN/ALASKAN NATIVE", 
+           "ASIAN / PACIFIC ISLANDER")),
+  Count = c(.327, .243, .106, .185, .004, .14),
+  Participant = rep("Census")
+)
+#order by Count, re-factor Race to match
+data <- data  %>%
+  arrange(Count)%>%
+  mutate(Race = fct_reorder(Race, Count))
+#create ordered factor list for later use
+orderedFactors <- levels(data$Race)
+#combine new census info w/ shooting report info
+nypdPlusCensus <- byRaceTotal %>%
+  bind_rows(byRaceTotal, data) %>%
+  mutate(Participant = factor(Participant)) %>%
+  #simplify labels for graph
+  mutate(Participant = fct_recode(Participant, "Victim" = "Victim Race","Perpetrator" = "Perp Race")) %>%
+  #order new data frame to match orderedFactors
+  mutate(Race = factor(Race, orderedFactors)) %>%
+  arrange(Race)
+#create color palette
+colorRace = gg_color_hue(length(orderedFactors))
+#Remove "UNKNOWN" category from nypd data
+nypdPlusCenMinUnknown <- nypdPlusCensus %>%
+  filter(Race != "UNKNOWN")
+#percent stacked bar plot for Census, Victim, and Perp races
+ggplot(nypdPlusCenMinUnknown, aes(fill = Race, x = Participant, y = Count))+
+  geom_bar(position = "fill", stat = "identity") +
+  ggtitle("Distributions for NYC, without Unknown") +
+  scale_color_manual(values = colorRace)
+```
+  
+Clearly certain communities are more densely represented in the shooting data than in the general population of New York.  But what happens when one correlates victim race and perpetrator race?
+
+```{r nypd_2ndpass, echo=FALSE}
+
+#get counts by both race factors
+racialCrossSec <- count(byRace) %>%
+  arrange(`Perp Race`, `Victim Race`)
+#heat graph plot showing density of crimes by race of victim and perpetrator
+ggplot(racialCrossSec, aes(`Perp Race`, `Victim Race`, fill = log2(n))) + 
+  geom_tile() + 
+  scale_fill_gradient(low = "grey", high = "chocolate4") +
+  theme(axis.text.x = element_text(angle = 35, size = 9, hjust = 1)) +
+  annotate("segment", x = 1, xend = 8, y = 1, yend = 8, color = "green", alpha = .6)
+```
+  
+  The heat map above shows this correlation, with the green line passing through crimes committed within racial communities.  By and large, these are the most concentrated areas of shooting crimes.  Interestingly, many communities do in fact seem to suffer primarily from perpetrators of the same race.  The first exception is for the American Indian/Alaskan Native community, which is almost certainly due to its small size (0.4% of the population).  
+  The more relevant outliers are the Black Hispanic and Asian American populations.  Possibly due to the especially subjective distinctions between Black Hispanic, White Hispanic, and Black, the Black Hispanic community is represented as being victims more of Black perpetrators than any other.  The Asian American community, on the other hand, has no major categorical ambiguities, but perpetrators of shooting violence against Asian Americans are split equally between Asian Americans and Black Americans.
+  
+## Model
+What can be done with the crimes that have known victims, but unidentified perpetrators?  This is where common perception tells us that there will be a high probability of those shootings crimes having been committed by a member of the victim's racial community.
+```{r binomModel, echo=FALSE}
+
+noUKOrdFac = c(orderedFactors[0:1], orderedFactors[2:6])
+binomRace <- byRace %>%
+  filter(`Perp Race` != "UNKNOWN")%>%
+  filter(`Victim Race` != "UNKNOWN") %>%
+  mutate(SameRace = (`Perp Race` == `Victim Race`)) %>%
+  mutate(SameRace = factor(SameRace))
+unknownRace <- byRace %>%
+  filter(`Perp Race` == "UNKNOWN") %>%
+  filter(`Victim Race` != "UNKNOWN") %>%
+  mutate(`Perp Race` = `Victim Race`) %>%
+  count() %>%
+  mutate(`Perp Race` = factor(`Perp Race`, noUKOrdFac)) %>%
+  arrange(`Perp Race`)
+unknownRacePredict <- unique(unknownRace)
+binMod <- glm(SameRace ~ `Victim Race`, data = binomRace, family = "binomial")
+#summary(binMod)
+
+modelPlot <- cbind(unknownRacePredict, predict(binMod, newdata = unknownRacePredict, type = "link", se = TRUE))
+
+modelPlot <- tibble(within(modelPlot, {
+    PredictedProb <- plogis(fit)
+    LL <- plogis(fit - (1.96 * se.fit))
+    UL <- plogis(fit + (1.96 * se.fit))
+}))
+modelPlot <- modelPlot %>%
+  mutate(`Victim Race` = factor(`Victim Race`, noUKOrdFac))%>%
+  arrange(`Victim Race`) %>%
+  mutate(`Estimate of Unattributed Crimes` =  PredictedProb*unknownRace$n)
+ggplot(modelPlot, aes(x = `Victim Race`, y = PredictedProb)) +
+  geom_bar(stat = "identity", fill = colorRace) +
+  theme(axis.text.x = element_text(angle = 35, size = 9, hjust = 1)) + 
+    geom_errorbar(aes(ymin=LL, ymax=UL, x=`Victim Race`)) +
+  geom_hline(yintercept = (1/length(noUKOrdFac)))
+
+```
+  
+A binomial distribution was performed on all crimes that had identified perpetrators and victims.  Based on that distribution, the remaining crimes with identified victims and unknown perpetrators were assigned a "Probability Prediction" of that shooting having been committed by a person of the same race as the victim.  The first chart shows these Probability Predictions, based on the race of the potential victim.  It shows that while all communities (withe the exception of the Native American/Native Alaskan community, which did not have enough data for a prediction) have some chance of a shooting crime being perpetrated by the same race.  The horizontal line on the graph indicates the independant probability of a crime being attributed to any of the represented racial communities.  While Asian/Pacific Islander and Black Hispanic communities are close to being independant of perpetrator race, the White and White Hispanic communities are moderately likely to be victimised by members of their own community.  The Black community is the most likely by far to be victim to its own members.  
+
+## Confounds and Bias 
+Because it is not an official reporting category, incidents that do not qualify are internally defined as, "cases in which bullets pass through victims’ clothes without striking the victims ... [or] cases in which victims are injured by broken glass or debris caused by gunfire."^  Presumably this also disincludes incidents where guns were discharged but no one was injured.  This means that this analysis may not accurately reflect all gun violence during the period, simply that with reported injuries.  
+    Another potential issue comes from the racial categories themselves.  Within the NYPD Shooting data, it is unclear as to how the officers are applying these labels, and there is inherent ambiguity to a third party assigning racial labels.  This is especially true between the Black, Black Hispanic, and White Hispanic Communities.  There is also no differentiation between police-identified perpetrators and witness-identified perpetrators, with witnesses being presumably less reliable.  
+    The analysis itself does not take into account factors such as geography.  Further analysis could look into these distributions and predictions in the context of Boro or location type for additional granularity and insight.
+    This predictive model does not cover the likelyhood of a member of a racial community being a shooting victim of all racial communities, only their own (i.e. Black on Black shootings are predicted for, but not Asian American on Black shootings).  More avenues of investigation are likely to be uncovered by expanding the purview of the model.  
+    Lastly, this analysis only looks at shooting crimes, only in New York City.  These patterns cannot necessarily be generalized onto other crime types, or other population distributions.  
+^Source:  https://www.nytimes.com/2016/01/04/opinion/nypd-shooting-statistics.html
